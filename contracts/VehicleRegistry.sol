@@ -47,17 +47,18 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
         string certIpfsHash
     );
 
+    event VehicleRegistrationDenied(
+        uint256 indexed requestId,
+        address indexed auditor,
+        address indexed owner,
+        string reason
+    );
 
     // -------- Implementing IVehicleRegistry --------
     function requestVehicleRegistration(
         string memory regIpfsHash,
         address ownerAddress
     ) external override returns (uint256) {
-        require(
-            hasRole(DEALER_ROLE, msg.sender) || hasRole(OWNER_ROLE, msg.sender),
-            "Not authorized to request registration"
-        );
-
         uint256 requestId = _nextRequestId++;
         vehicleRegistrations[requestId] = VehicleRegistration({
             ownerAddress: ownerAddress,
@@ -68,7 +69,12 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
             regIpfsHash: regIpfsHash,
             minted: false
         });
-        emit VehicleRegistrationRequested(requestId, msg.sender, ownerAddress, regIpfsHash);
+        emit VehicleRegistrationRequested(
+            requestId,
+            msg.sender,
+            ownerAddress,
+            regIpfsHash
+        );
         return requestId;
     }
 
@@ -76,7 +82,9 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
         uint256 requestId,
         string memory certIpfsHash
     ) public override onlyRole(AUDITOR_ROLE) {
-        VehicleRegistration storage registration = vehicleRegistrations[requestId];
+        VehicleRegistration storage registration = vehicleRegistrations[
+            requestId
+        ];
         require(
             registration.status == VehicleStatus.Pending,
             "Already processed"
@@ -95,7 +103,37 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
             issuerAddress: registration.issuerAddress,
             certIpfsHash: certIpfsHash
         });
-        emit VehicleRegistrationApproved(requestId, tokenId, registration.ownerAddress, certIpfsHash);
+        emit VehicleRegistrationApproved(
+            requestId,
+            tokenId,
+            registration.ownerAddress,
+            certIpfsHash
+        );
+    }
+
+    function denyVehicleRegistration(
+        uint256 requestId,
+        string memory reason
+    ) public override onlyRole(AUDITOR_ROLE) {
+        VehicleRegistration storage registration = vehicleRegistrations[
+            requestId
+        ];
+        require(
+            registration.status == VehicleStatus.Pending,
+            "Already processed"
+        );
+
+        registration.status = VehicleStatus.Rejected;
+        registration.registrationDate = block.timestamp; // time of denial
+        registration.issuerAddress = msg.sender;
+        registration.minted = false;
+
+        emit VehicleRegistrationDenied(
+            requestId,
+            msg.sender,
+            registration.ownerAddress,
+            reason
+        );
     }
 
     function fetchVehicleCertificate(
@@ -108,11 +146,13 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
     function fetchVehicleRegistrationRequest(
         uint256 requestId
     ) public view override returns (VehicleRegistration memory) {
-        VehicleRegistration memory registration = vehicleRegistrations[requestId];
+        VehicleRegistration memory registration = vehicleRegistrations[
+            requestId
+        ];
         require(
             hasRole(AUDITOR_ROLE, msg.sender) ||
-            msg.sender == registration.requesterAddress ||
-            msg.sender == registration.ownerAddress,
+                msg.sender == registration.requesterAddress ||
+                msg.sender == registration.ownerAddress,
             "Not authorized to view this request"
         );
         return registration;
