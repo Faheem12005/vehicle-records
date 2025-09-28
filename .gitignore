@@ -1,6 +1,9 @@
 # Node modules
 /node_modules
 
+# Ignition deployments
+/ignition/deployments/
+   
 # Compilation output
 /dist
 
@@ -20,3 +23,4 @@
 /coverage
 
 .env
+

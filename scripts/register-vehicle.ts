@@ -38,13 +38,8 @@ async function main() {
     abi,
     functionName: "requestVehicleRegistration",
     args: [
-      "1HGCM82633A123456",
-      "Honda",
-      "Accord",
-      2020,
+      "ipfsHash1234", // Example IPFS hash
       userAccount.address,
-      "CHS123456789",
-      "ENG123456789",
     ],
   });
 

@@ -33,6 +33,11 @@ interface IVehicleRegistry {
         string memory certIpfsHash
     ) external;
 
+    function denyVehicleRegistration(
+        uint256 requestId, 
+        string memory reason
+    ) external;
+
     function fetchVehicleCertificate(
         uint256 tokenId
     ) external view returns (VehicleCertificate memory);
