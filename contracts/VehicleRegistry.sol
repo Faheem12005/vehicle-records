@@ -12,6 +12,8 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
     uint256 private _nextRequestId;
     uint256 private _nextTokenId;
 
+    // Role constants
+    bytes32 public constant ROLE_MANAGER_ROLE = keccak256("ROLE_MANAGER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     bytes32 public constant BURNER_ROLE = keccak256("BURNER_ROLE");
     bytes32 public constant TRANSFER_ROLE = keccak256("TRANSFER_ROLE");
@@ -21,7 +23,23 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
 
     constructor() ERC721("VehicleRegistry", "VRE") {
+        // Grant admin role to deployer
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        
+        // Set up role hierarchy - ROLE_MANAGER_ROLE can manage these specific roles
+        _setRoleAdmin(DEALER_ROLE, ROLE_MANAGER_ROLE);
+        _setRoleAdmin(AUDITOR_ROLE, ROLE_MANAGER_ROLE);
+        _setRoleAdmin(OWNER_ROLE, ROLE_MANAGER_ROLE);
+        
+        // Keep admin control over critical roles
+        _setRoleAdmin(MINTER_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(BURNER_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(TRANSFER_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(UPDATER_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(ROLE_MANAGER_ROLE, DEFAULT_ADMIN_ROLE);
+        
+        // Grant initial roles to deployer
+        _grantRole(ROLE_MANAGER_ROLE, msg.sender);
         _grantRole(MINTER_ROLE, msg.sender);
         _grantRole(BURNER_ROLE, msg.sender);
         _grantRole(TRANSFER_ROLE, msg.sender);
@@ -31,8 +49,29 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
         _grantRole(AUDITOR_ROLE, msg.sender);
     }
 
+    // Function to allow ROLE_MANAGER to grant managed roles
+    function grantManagedRole(bytes32 role, address account) external onlyRole(getRoleAdmin(role)) {
+        require(
+            role == DEALER_ROLE || 
+            role == AUDITOR_ROLE || 
+            role == OWNER_ROLE, 
+            "Role not manageable by ROLE_MANAGER"
+        );
+        _grantRole(role, account);
+    }
+
+    // Function to allow ROLE_MANAGER to revoke managed roles
+    function revokeManagedRole(bytes32 role, address account) external onlyRole(getRoleAdmin(role)) {
+        require(
+            role == DEALER_ROLE || 
+            role == AUDITOR_ROLE || 
+            role == OWNER_ROLE, 
+            "Role not manageable by ROLE_MANAGER"
+        );
+        _revokeRole(role, account);
+    }
+
     //events
-    // Add these inside the contract
     event VehicleRegistrationRequested(
         uint256 indexed requestId,
         address indexed requester,
@@ -124,7 +163,7 @@ contract VehicleRegistry is ERC721, AccessControl, IVehicleRegistry {
         );
 
         registration.status = VehicleStatus.Rejected;
-        registration.registrationDate = block.timestamp; // time of denial
+        registration.registrationDate = block.timestamp;
         registration.issuerAddress = msg.sender;
         registration.minted = false;
 

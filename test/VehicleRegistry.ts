@@ -7,7 +7,7 @@ import { keccak256 } from "viem/utils";
 // Role constants
 const DEALER_ROLE = keccak256("DEALER_ROLE" as `0x${string}`);
 const AUDITOR_ROLE = keccak256("AUDITOR_ROLE" as `0x${string}`);
-const DEFAULT_ADMIN_ROLE = "0x0000000000000000000000000000000000000000000000000000000000000000" as `0x${string}`;
+const ROLE_MANAGER_ROLE = keccak256("ROLE_MANAGER_ROLE" as `0x${string}`);
 
 // Load ABIs
 const vehicleArtifact = JSON.parse(
@@ -17,14 +17,14 @@ const roleRequestArtifact = JSON.parse(
     readFileSync("./artifacts/contracts/RoleRequestManager.sol/RoleRequestManager.json", "utf8")
 );
 
-describe("VehicleRegistry + RoleRequestManager", async () => {
+describe("VehicleRegistry + RoleRequestManager with Role Hierarchy", async () => {
     const admin = walletClient.account.address;
     const user1 = walletClient.account.address;
 
     console.log("Admin address:", admin);
     console.log("User1 address:", user1);
 
-    // Deploy contracts once
+    // Deploy contracts
     //@ts-ignore
     const vehicleRegistryTxHash = await walletClient.deployContract({
         account: walletClient.account,
@@ -45,15 +45,15 @@ describe("VehicleRegistry + RoleRequestManager", async () => {
     const roleRequestManagerAddress = roleRequestManagerReceipt.contractAddress!;
     console.log("RoleRequestManager deployed at:", roleRequestManagerAddress);
 
-    // Grant admin role to RoleRequestManager so it can grant roles in VehicleRegistry
+    // Grant ROLE_MANAGER_ROLE to RoleRequestManager (much safer than admin role!)
     const grantRoleTxHash = await walletClient.writeContract({
         address: vehicleRegistryAddress,
         abi: vehicleArtifact.abi,
         functionName: "grantRole",
-        args: [DEFAULT_ADMIN_ROLE, roleRequestManagerAddress],
+        args: [ROLE_MANAGER_ROLE, roleRequestManagerAddress],
     });
     await publicClient.waitForTransactionReceipt({ hash: grantRoleTxHash });
-    console.log("Admin role granted to RoleRequestManager");
+    console.log("ROLE_MANAGER_ROLE granted to RoleRequestManager");
 
     it("User can request a role and admin can approve it", async () => {
         // User requests a role
@@ -66,7 +66,6 @@ describe("VehicleRegistry + RoleRequestManager", async () => {
         await publicClient.waitForTransactionReceipt({ hash: requestTxHash });
         console.log("Role request transaction hash:", requestTxHash);
 
-        // Note: Request ID starts from 0, not 1
         const requestId = 0n;
         
         // Admin approves the role request
@@ -102,7 +101,6 @@ describe("VehicleRegistry + RoleRequestManager", async () => {
         await publicClient.waitForTransactionReceipt({ hash: requestTxHash });
         console.log("Vehicle registration request hash:", requestTxHash);
 
-        // Note: Vehicle registration request ID also starts from 0
         const requestId = 0n;
         const certHash = "QmCertHash456";
         
@@ -124,7 +122,35 @@ describe("VehicleRegistry + RoleRequestManager", async () => {
             args: [requestId],
         });
         
-        // Assuming status 1 means approved (check your contract enum)
         assert(registration.status === 1, "Registration should be approved");
+    });
+
+    it("Should prevent requesting non-manageable roles", async () => {
+        // Try to request a role that's not manageable
+        const MINTER_ROLE = keccak256("MINTER_ROLE" as `0x${string}`);
+        
+        let errorThrown = false;
+        try {
+            await walletClient.writeContract({
+                address: roleRequestManagerAddress,
+                abi: roleRequestArtifact.abi,
+                functionName: "requestRole",
+                args: [MINTER_ROLE],
+            });
+            assert.fail("Should have reverted for non-manageable role");
+        } catch (error: any) {
+            errorThrown = true;
+            console.log("Error caught:", error.message);
+            // Check for various possible error message formats
+            const hasExpectedError = 
+                error.message.includes("Role not requestable") ||
+                error.message.includes("execution reverted") ||
+                error.message.includes("revert") ||
+                error.cause?.reason?.includes("Role not requestable");
+            
+            assert(hasExpectedError, `Expected revert message, got: ${error.message}`);
+        }
+        
+        assert(errorThrown, "Expected transaction to revert but it didn't");
     });
 });
